@@ -1,0 +1,39 @@
+# ===== Python =====
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+*.egg
+*.so
+
+# ===== Environment =====
+.env
+.env.local
+.env.*.local
+
+# ===== Node / Frontend =====
+node_modules/
+frontend/dist/
+
+# ===== Data (runtime generated) =====
+chroma_data/
+uploads/
+
+# ===== IDE =====
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ===== Logs =====
+*.log
+logs/

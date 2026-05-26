@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .tab-active {
+    @apply bg-gradient-to-r from-gold-50 to-white border-gold-200 shadow-md;
+  }
+  .tab-hover {
+    @apply hover:bg-gradient-to-r from-gold-50 to-white hover:border-gold-200 hover:shadow-md transition-all duration-200;
+  }
+  .dropdown-item {
+    @apply px-4 py-2 text-gray-700 hover:bg-gold-50 cursor-pointer transition-colors duration-150;
+  }
+}
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
