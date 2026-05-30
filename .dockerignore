@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+*.egg
+.venv/
+venv/
+
+# Environment
+.env
+.env.local
+
+# Node
+node_modules/
+frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Data (runtime generated)
+chroma_data/
+uploads/
+*.log
+
+# Git
+.git/
+.gitignore
+
+# Docs
+*.md
+*.docx

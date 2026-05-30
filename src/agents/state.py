@@ -14,7 +14,8 @@ class ChatAgentState(TypedDict):
     final_response: str
 
 
-class CopywritingState(TypedDict):
+class CopywritingWorkflowState(TypedDict):
+    messages: Annotated[list[BaseMessage], add_messages]
     product_name: str
     product_type: str
     product_features: str
@@ -22,5 +23,9 @@ class CopywritingState(TypedDict):
     promotion_info: str
     target_audience: str
     stock_status: str
+    info_complete: bool
+    analysis_result: str
     generated_copy: str
-    revision_history: list[str]
+    compliance_rules: str
+    next_action: str
+    manager_question: str

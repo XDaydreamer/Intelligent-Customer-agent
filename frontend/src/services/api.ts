@@ -188,23 +188,106 @@ export const conversationApi = {
     }),
 };
 
-// ─── Copywriting ───────────────────────────────────────
-export interface CopywritingRequest {
-  product_name: string;
-  product_type: string;
-  product_features?: string;
-  product_price?: string;
-  promotion_info?: string;
-  target_audience?: string;
-  stock_status?: string;
-}
-export interface CopywritingResponse {
-  content: string;
+// ─── Copywriting Workflow ───────────────────────────────
+
+export interface CopywritingSessionListItem {
+  id: string;
+  title: string | null;
+  status: string;
+  message_count: number;
+  created_at: string;
+  updated_at: string;
 }
 
-export const copywritingApi = {
-  generate: (data: CopywritingRequest) =>
-    request<CopywritingResponse>('/copywriting/generate', { method: 'POST', body: JSON.stringify(data) }),
-  save: (data: { content: string; knowledge_base_id: string; filename: string }) =>
-    request<{ id: string; filename: string }>('/copywriting/save', { method: 'POST', body: JSON.stringify(data) }),
+export interface CopywritingMessageOut {
+  id: string;
+  session_id: string;
+  role: string;
+  content: string;
+  created_at: string;
+}
+
+export interface CopywritingSessionDetail extends CopywritingSessionListItem {
+  generated_copy: string;
+  next_action: string;
+  manager_question: string;
+  messages: CopywritingMessageOut[];
+}
+
+export interface SessionStartResponse {
+  session_id: string;
+  agent_message: CopywritingMessageOut;
+  next_action: string;
+}
+
+export interface SessionSendResponse {
+  agent_message: CopywritingMessageOut;
+  next_action: string;
+  generated_copy: string;
+}
+
+export interface ComplianceRule {
+  id: string;
+  title: string;
+  content: string;
+  source_type: string;
+  file_path: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UploadRuleResponse {
+  status: string;
+  similarity: number;
+  similar_rule_id: string | null;
+  similar_rule_title: string | null;
+  rule: ComplianceRule | null;
+}
+
+export const copywritingWorkflowApi = {
+  start: (data: { title?: string; initial_message: string }) =>
+    request<SessionStartResponse>('/copywriting/workflow/start', {
+      method: 'POST', body: JSON.stringify(data),
+    }),
+  send: (sessionId: string, message: string) =>
+    request<SessionSendResponse>(`/copywriting/workflow/${sessionId}/send`, {
+      method: 'POST', body: JSON.stringify({ message }),
+    }),
+  getSession: (sessionId: string) =>
+    request<CopywritingSessionDetail>(`/copywriting/workflow/${sessionId}`),
+  listSessions: () =>
+    request<CopywritingSessionListItem[]>('/copywriting/workflow'),
+  deleteSession: (sessionId: string) =>
+    request<void>(`/copywriting/workflow/${sessionId}`, { method: 'DELETE' }),
+  exportCopy: (sessionId: string) =>
+    request<{ content: string }>(`/copywriting/workflow/${sessionId}/export`),
+  saveToKb: (sessionId: string, knowledgeBaseId: string, filename: string) =>
+    request<{ id: string; filename: string }>(
+      `/copywriting/workflow/${sessionId}/save-to-kb`,
+      { method: 'POST', body: JSON.stringify({ knowledge_base_id: knowledgeBaseId, filename }) },
+    ),
+};
+
+export const complianceRuleApi = {
+  list: () => request<ComplianceRule[]>('/compliance-rules'),
+  create: (data: { title: string; content: string; source_type?: string }) =>
+    request<ComplianceRule>('/compliance-rules', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: { title?: string; content?: string }) =>
+    request<ComplianceRule>(`/compliance-rules/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) =>
+    request<void>(`/compliance-rules/${id}`, { method: 'DELETE' }),
+  upload: (file: File, force: boolean = false) => {
+    const form = new FormData();
+    form.append('file', file);
+    return fetch(`/api/compliance-rules/upload${force ? '?force=true' : ''}`, {
+      method: 'POST',
+      body: form,
+    }).then((res) => {
+      if (!res.ok) {
+        return res.json().then((err) => { throw new Error(err.detail || 'Upload failed'); });
+      }
+      return res.json() as Promise<UploadRuleResponse>;
+    });
+  },
+  getFileUrl: (id: string) => `/api/compliance-rules/${id}/file`,
 };

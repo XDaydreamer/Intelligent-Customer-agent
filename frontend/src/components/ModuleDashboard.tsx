@@ -1,4 +1,4 @@
-import { MessageCircle, BookOpen, History, Headphones, ShoppingBag, User, ChevronRight } from 'lucide-react';
+import { MessageCircle, BookOpen, History, Headphones, ShoppingBag, User, PenTool, ChevronRight } from 'lucide-react';
 import type { TabId } from '../types';
 
 interface ModuleDef {
@@ -15,6 +15,7 @@ const modules: ModuleDef[] = [
   { id: 'cs-template', label: '客服模版', desc: '管理客服回复模版', icon: <Headphones size={36} /> },
   { id: 'store-config', label: '商店配置', desc: '商店相关设置', icon: <ShoppingBag size={36} /> },
   { id: 'transfer', label: '转人工设置', desc: '配置转人工触发规则', icon: <User size={36} /> },
+  { id: 'copywriting', label: '文案生成系统', desc: '生成产品营销文案并添加到知识库', icon: <PenTool size={36} /> },
 ];
 
 interface Props {
@@ -24,12 +25,12 @@ interface Props {
 export default function ModuleDashboard({ onEnter }: Props) {
   return (
     <div className="flex-1 flex items-center justify-center px-8">
-      <div className="w-full max-w-3xl">
+      <div className="w-full max-w-5xl">
         <div className="text-center mb-10">
           <h1 className="text-3xl font-bold text-gray-800 mb-2">智能客服系统</h1>
           <p className="text-gray-400">选择一个模块开始工作</p>
         </div>
-        <div className="grid grid-cols-3 gap-5">
+        <div className="grid grid-cols-4 gap-5">
           {modules.map((m) => (
             <div
               key={m.id}

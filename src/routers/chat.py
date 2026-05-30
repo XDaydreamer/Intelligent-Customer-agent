@@ -6,14 +6,10 @@ from src.services.template_service import TemplateService
 from src.services.dialog_service import DialogService
 from src.services.memory_service import MemoryService
 from src.agents.chat_agent import get_chat_agent
-from src.agents.copywriting_agent import get_copywriting_agent
 from src.services.knowledge_service import KnowledgeService
 from src.schemas.chat import (
     ChatRequest,
     ChatResponse,
-    CopywritingGenerateRequest,
-    CopywritingResponse,
-    CopywritingSaveRequest,
 )
 
 router = APIRouter(prefix="/api", tags=["智能对话"])
@@ -87,30 +83,3 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
 
     return ChatResponse(reply=reply, conversation_id=conv_id)
 
-
-@router.post("/copywriting/generate", response_model=CopywritingResponse)
-async def generate_copywriting(request: CopywritingGenerateRequest):
-    """文档知识：根据产品信息生成营销文案。"""
-    agent = get_copywriting_agent()
-    content = await agent.generate(
-        product_name=request.product_name,
-        product_type=request.product_type,
-        product_features=request.product_features or "",
-        product_price=request.product_price or "",
-        promotion_info=request.promotion_info or "",
-        target_audience=request.target_audience or "",
-        stock_status=request.stock_status or "",
-    )
-    return CopywritingResponse(content=content)
-
-
-@router.post("/copywriting/save", status_code=201)
-async def save_copywriting(request: CopywritingSaveRequest, db: AsyncSession = Depends(get_db)):
-    """将生成的文案保存到指定知识库。"""
-    service = KnowledgeService(db)
-    doc = await service.add_text_to_kb(
-        kb_id=request.knowledge_base_id,
-        text=request.content,
-        filename=request.filename,
-    )
-    return {"id": doc.id, "filename": doc.filename}

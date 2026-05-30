@@ -165,9 +165,9 @@ export default function KnowledgeNewPage({ onNavigate, onSelectKB }: Props) {
           </button>
           <button
             className="flex-1 py-3 border rounded-lg hover:bg-gray-50 transition-colors"
-            onClick={() => onNavigate('knowledge-doc')}
+            onClick={() => onNavigate('copywriting')}
           >
-            文档知识生成文案
+            文案生成系统
           </button>
         </div>
       )}

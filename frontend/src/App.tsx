@@ -5,8 +5,8 @@ import ModuleDashboard from './components/ModuleDashboard';
 import ChatPage from './pages/ChatPage';
 import KnowledgeNewPage from './pages/KnowledgeNewPage';
 import KnowledgeUploadPage from './pages/KnowledgeUploadPage';
-import KnowledgeDocPage from './pages/KnowledgeDocPage';
 import KnowledgeAIPage from './pages/KnowledgeAIPage';
+import CopywritingChatPage from './pages/CopywritingChatPage';
 import ChatHistoryPage from './pages/ChatHistoryPage';
 import CSTemplatePage from './pages/CSTemplatePage';
 import StoreConfigPage from './pages/StoreConfigPage';
@@ -17,7 +17,7 @@ type View = 'home' | 'module';
 
 export default function App() {
   const [view, setView] = useState<View>('home');
-  const [activeTab, setActiveTab] = useState<TabId>('knowledge-doc');
+  const [activeTab, setActiveTab] = useState<TabId>('chat');
   const [selectedKbId, setSelectedKbId] = useState('');
 
   function enterModule(tab: TabId) {
@@ -30,12 +30,11 @@ export default function App() {
   }
 
   function isKnowledgeTab() {
-    return ['knowledge-new', 'knowledge-upload', 'knowledge-doc', 'knowledge-ai'].includes(activeTab);
+    return ['knowledge-new', 'knowledge-upload', 'knowledge-ai'].includes(activeTab);
   }
 
   const knowledgeSubTabs = [
     { id: 'knowledge-new' as TabId, label: '新建知识库' },
-    { id: 'knowledge-doc' as TabId, label: '文档知识' },
     { id: 'knowledge-ai' as TabId, label: '知能对话' },
   ];
 
@@ -47,8 +46,6 @@ export default function App() {
         return <KnowledgeNewPage onNavigate={setActiveTab} onSelectKB={setSelectedKbId} />;
       case 'knowledge-upload':
         return <KnowledgeUploadPage selectedKbId={selectedKbId} onSelectKB={setSelectedKbId} />;
-      case 'knowledge-doc':
-        return <KnowledgeDocPage />;
       case 'knowledge-ai':
         return <KnowledgeAIPage />;
       case 'chat-history':
@@ -59,6 +56,8 @@ export default function App() {
         return <StoreConfigPage />;
       case 'transfer':
         return <TransferPage />;
+      case 'copywriting':
+        return <CopywritingChatPage />;
       default:
         return <ChatPage />;
     }
@@ -75,6 +74,7 @@ export default function App() {
       'cs-template': '客服模版',
       'store-config': '商店配置',
       transfer: '转人工设置',
+      copywriting: '文案生成系统',
     };
     return titles[activeTab] || '';
   }

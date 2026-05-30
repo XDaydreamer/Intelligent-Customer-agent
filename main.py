@@ -13,6 +13,7 @@ from src.database.init_db import init_db
 from src.database.postgres import async_session_factory
 from src.services.memory_service import MemoryService
 from src.routers import knowledge, template, dialog, transfer, chat, conversation
+from src.routers.copywriting_workflow import router as copywriting_workflow_router, compliance_router
 
 settings = get_settings()
 
@@ -53,7 +54,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost",       # Docker production
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -66,6 +71,8 @@ app.include_router(dialog.router)
 app.include_router(transfer.router)
 app.include_router(chat.router)
 app.include_router(conversation.router)
+app.include_router(copywriting_workflow_router)
+app.include_router(compliance_router)
 
 
 @app.get("/api/health")

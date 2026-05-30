@@ -7,7 +7,8 @@ export type TabId =
   | 'chat-history'
   | 'cs-template'
   | 'store-config'
-  | 'transfer';
+  | 'transfer'
+  | 'copywriting';
 
 export interface Template {
   id: string;

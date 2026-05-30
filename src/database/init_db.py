@@ -7,6 +7,7 @@ import src.models.template         # noqa: F401
 import src.models.dialog           # noqa: F401
 import src.models.transfer_rule    # noqa: F401
 import src.models.conversation     # noqa: F401
+import src.models.copywriting_session  # noqa: F401
 
 
 async def init_db():

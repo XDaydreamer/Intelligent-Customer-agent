@@ -1,0 +1,58 @@
+services:
+  # ── PostgreSQL ──
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: customer_agent
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d customer_agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── FastAPI Backend ──
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: customer_agent
+      CHROMA_PERSIST_DIR: /app/chroma_data
+      UPLOAD_DIR: /app/uploads
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY}
+      DASHSCOPE_BASE_URL: https://dashscope.aliyuncs.com/compatible-mode/v1
+      LLM_MODEL: qwen-plus
+      EMBEDDING_MODEL: text-embedding-v2
+      DEBUG: "false"
+    volumes:
+      - chroma_data:/app/chroma_data
+      - uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Nginx + React Frontend ──
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  chroma_data:
+  uploads:

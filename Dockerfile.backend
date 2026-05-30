@@ -1,0 +1,43 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# System dependencies for asyncpg and python-docx
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY pyproject.toml .
+RUN pip install --no-cache-dir \
+    fastapi \
+    "uvicorn[standard]" \
+    "sqlalchemy[asyncio]" \
+    asyncpg \
+    chromadb \
+    redis \
+    langchain \
+    langgraph \
+    langchain-openai \
+    python-multipart \
+    pydantic \
+    pydantic-settings \
+    aiofiles \
+    python-dotenv \
+    openpyxl \
+    python-docx \
+    pandas \
+    tiktoken \
+    sentence-transformers
+
+# Copy source code
+COPY src/ ./src/
+COPY main.py .
+
+# Create runtime directories
+RUN mkdir -p /app/chroma_data /app/uploads
+
+EXPOSE 8000
+
+CMD ["python", "main.py"]
