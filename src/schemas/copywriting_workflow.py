@@ -108,3 +108,15 @@ class UploadRuleResponse(BaseModel):
 class SaveToKbRequest(BaseModel):
     knowledge_base_id: str = Field(..., description="Target KB ID")
     filename: str = Field("product_copy.md", description="Saved filename")
+
+
+# ── Image upload ──
+
+class ImageOut(BaseModel):
+    image_id: str
+    filename: str
+    preview_url: str
+
+
+class SessionImagesResponse(BaseModel):
+    images: list[ImageOut]

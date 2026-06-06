@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import os
+import shutil
 import difflib
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,6 +47,8 @@ class CopywritingService:
         session = await self.get_session(session_id)
         if not session:
             return False
+        # Clean up uploaded images
+        self._cleanup_images_dir(session_id)
         await self.db.delete(session)
         await self.db.flush()
         return True
@@ -62,15 +65,28 @@ class CopywritingService:
     # ── State serialization ──
 
     @staticmethod
+    def _content_to_text(content) -> str:
+        """Extract plain text from message content (handles multimodal list content)."""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = [item.get("text", "") for item in content if item.get("type") == "text"]
+            return "\n".join(parts)
+        return str(content)
+
+    @staticmethod
     def serialize_state(state: dict) -> dict:
         """Convert LangGraph state (with BaseMessage objects) to JSON-serializable dict."""
         serializable = {}
         for key, value in state.items():
             if key == "messages":
                 serializable[key] = [
-                    {"type": msg.__class__.__name__, "content": msg.content}
+                    {"type": msg.__class__.__name__,
+                     "content": CopywritingService._content_to_text(msg.content)}
                     for msg in value
                 ]
+            elif key == "image_paths":
+                serializable[key] = list(value) if value else []
             elif isinstance(value, bool):
                 serializable[key] = value
             else:
@@ -87,6 +103,7 @@ class CopywritingService:
                 for m in value:
                     msg_type = m.get("type", "")
                     content = m.get("content", "")
+                    # Reconstruct as plain text (images are rebuilt from image_paths)
                     if msg_type == "HumanMessage":
                         msgs.append(HumanMessage(content=content))
                     elif msg_type == "AIMessage":
@@ -94,6 +111,8 @@ class CopywritingService:
                     elif msg_type == "SystemMessage":
                         msgs.append(SystemMessage(content=content))
                 state[key] = msgs
+            elif key == "image_paths":
+                state[key] = list(value) if isinstance(value, list) else []
             elif key == "info_complete":
                 state[key] = bool(value)
             else:
@@ -272,3 +291,58 @@ class CopywritingService:
         if not file_path.exists():
             return (None, None)
         return (file_path.read_bytes(), file_path.name)
+
+    # ── Image management ──
+
+    def _images_dir(self, session_id: str) -> Path:
+        return Path(settings.upload_dir) / "copywriting_images" / session_id
+
+    async def add_image(self, session_id: str, filename: str, file_bytes: bytes) -> tuple[str, str]:
+        """Save an uploaded image and return (image_id, preview_url).
+        image_id is the filename on disk."""
+        import uuid
+        ext = Path(filename).suffix.lower()
+        image_id = f"{uuid.uuid4().hex}{ext}"
+        img_dir = self._images_dir(session_id)
+        img_dir.mkdir(parents=True, exist_ok=True)
+        (img_dir / image_id).write_bytes(file_bytes)
+        preview_url = f"/api/copywriting/workflow/{session_id}/images/{image_id}"
+        return (image_id, preview_url)
+
+    async def list_images(self, session_id: str) -> list[dict]:
+        """List all uploaded images for a session."""
+        img_dir = self._images_dir(session_id)
+        if not img_dir.exists():
+            return []
+        result = []
+        for f in sorted(img_dir.iterdir(), key=lambda x: x.stat().st_mtime):
+            if f.is_file() and f.suffix.lower() in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"):
+                result.append({
+                    "image_id": f.name,
+                    "filename": f.name,
+                    "preview_url": f"/api/copywriting/workflow/{session_id}/images/{f.name}",
+                })
+        return result
+
+    async def get_image_bytes(self, session_id: str, image_id: str) -> bytes | None:
+        """Get image file bytes."""
+        path = self._images_dir(session_id) / image_id
+        if not path.exists():
+            return None
+        return path.read_bytes()
+
+    async def delete_image(self, session_id: str, image_id: str) -> bool:
+        """Delete a single image."""
+        path = self._images_dir(session_id) / image_id
+        if not path.exists():
+            return False
+        path.unlink()
+        return True
+
+    @staticmethod
+    def _cleanup_images_dir(session_id: str):
+        """Remove the entire images directory for a session."""
+        import shutil
+        img_dir = Path(settings.upload_dir) / "copywriting_images" / session_id
+        if img_dir.exists():
+            shutil.rmtree(img_dir, ignore_errors=True)
