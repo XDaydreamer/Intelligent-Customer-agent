@@ -29,3 +29,4 @@ class CopywritingWorkflowState(TypedDict):
     compliance_rules: str
     next_action: str
     manager_question: str
+    image_paths: list[str]

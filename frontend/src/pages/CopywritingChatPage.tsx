@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Shield, Eye, Download, PlusCircle, Plus, X, Edit3, Trash2, FileText, Upload as UploadIcon } from 'lucide-react';
-import { copywritingWorkflowApi, complianceRuleApi, knowledgeApi, type KBItem, type ComplianceRule, type UploadRuleResponse } from '../services/api';
+import { Send, Shield, Eye, Download, PlusCircle, Plus, X, Edit3, Trash2, FileText, Upload as UploadIcon, Paperclip, Image } from 'lucide-react';
+import { copywritingWorkflowApi, complianceRuleApi, knowledgeApi, type KBItem, type ComplianceRule, type UploadRuleResponse, type ImageOut } from '../services/api';
 
 interface Message {
   role: 'user' | 'agent';
@@ -44,6 +44,12 @@ export default function CopywritingChatPage() {
   const [fileViewerTitle, setFileViewerTitle] = useState('');
   const [fileViewerContent, setFileViewerContent] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Product images
+  const [uploadedImages, setUploadedImages] = useState<ImageOut[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -94,6 +100,8 @@ export default function CopywritingChatPage() {
         const res = await copywritingWorkflowApi.start({ initial_message: msg });
         setSessionId(res.session_id);
         localStorage.setItem('cw_session_id', res.session_id);
+        // Upload any pending images
+        if (pendingFiles.length > 0) await uploadPendingImages(res.session_id);
         setMessages([
           { role: 'user', content: msg },
           { role: 'agent', content: res.agent_message.content },
@@ -145,6 +153,8 @@ export default function CopywritingChatPage() {
     setPhase('idle');
     setError('');
     setSaveMsg('');
+    setUploadedImages([]);
+    setPendingFiles([]);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -322,6 +332,68 @@ export default function CopywritingChatPage() {
     }
   }
 
+  // ── Image Upload ──
+
+  function handleImageSelect() {
+    imageInputRef.current?.click();
+  }
+
+  async function handleImagesSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const validFiles = files.filter((f) => f.type.startsWith('image/'));
+    if (validFiles.length === 0) { setError('请选择图片文件'); return; }
+
+    if (sessionId) {
+      // Upload immediately
+      setUploadingImages(true);
+      try {
+        const results = await copywritingWorkflowApi.uploadImages(sessionId, validFiles);
+        setUploadedImages((prev) => [...prev, ...results]);
+      } catch (e: any) { setError('图片上传失败: ' + e.message); }
+      finally { setUploadingImages(false); }
+    } else {
+      // Store files locally, upload when session is created
+      setPendingFiles((prev) => [...prev, ...validFiles]);
+    }
+    // Reset file input
+    if (imageInputRef.current) imageInputRef.current.value = '';
+  }
+
+  async function uploadPendingImages(sid: string) {
+    if (pendingFiles.length === 0) return;
+    try {
+      const results = await copywritingWorkflowApi.uploadImages(sid, pendingFiles);
+      setUploadedImages(results);
+      setPendingFiles([]);
+    } catch (e: any) {
+      setError('图片上传失败: ' + e.message);
+    }
+  }
+
+  async function handleRemoveImage(imageId: string) {
+    if (!sessionId) { setPendingFiles((prev) => prev.filter((_, i) => String(i) !== imageId)); return; }
+    try {
+      await copywritingWorkflowApi.deleteImage(sessionId, imageId);
+      setUploadedImages((prev) => prev.filter((img) => img.image_id !== imageId));
+    } catch (e: any) { setError('删除图片失败: ' + e.message); }
+  }
+
+  function handleImageDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
+    if (!files.length) return;
+    if (sessionId) {
+      setUploadingImages(true);
+      copywritingWorkflowApi.uploadImages(sessionId, files)
+        .then((results) => setUploadedImages((prev) => [...prev, ...results]))
+        .catch((e) => setError('图片上传失败: ' + e.message))
+        .finally(() => setUploadingImages(false));
+    } else {
+      setPendingFiles((prev) => [...prev, ...files]);
+    }
+  }
+
   // ── Render ──
 
   return (
@@ -452,8 +524,70 @@ export default function CopywritingChatPage() {
       )}
 
       {/* Input Bar */}
-      <div className="px-6 pb-4 max-w-3xl mx-auto w-full shrink-0">
+      <div className="px-6 pb-4 max-w-3xl mx-auto w-full shrink-0"
+           onDragOver={(e) => { e.preventDefault(); }}
+           onDrop={handleImageDrop}>
+        {/* Image preview strip */}
+        {(uploadedImages.length > 0 || pendingFiles.length > 0) && (
+          <div className="flex items-center space-x-2 mb-2 overflow-x-auto pb-1">
+            {uploadedImages.map((img) => (
+              <div key={img.image_id} className="relative shrink-0 group">
+                <img
+                  src={sessionId ? img.preview_url : URL.createObjectURL(pendingFiles.find((f) => f.name === img.filename) as File)}
+                  alt={img.filename}
+                  className="w-16 h-16 object-cover rounded-lg border border-gray-200"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                />
+                <button
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => handleRemoveImage(img.image_id)}
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            ))}
+            {pendingFiles.map((file, idx) => (
+              <div key={`pending-${idx}`} className="relative shrink-0 group">
+                <img
+                  src={URL.createObjectURL(file)}
+                  alt={file.name}
+                  className="w-16 h-16 object-cover rounded-lg border border-gray-200 opacity-60"
+                />
+                <button
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => setPendingFiles((prev) => prev.filter((_, i) => i !== idx))}
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            ))}
+            {uploadingImages && (
+              <div className="w-16 h-16 shrink-0 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center">
+                <div className="animate-spin w-4 h-4 border border-primary border-t-transparent rounded-full" />
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex space-x-2">
+          {/* Image upload button */}
+          {phase !== 'generated' && (
+            <button
+              onClick={handleImageSelect}
+              disabled={uploadingImages}
+              className="px-3 py-3 border border-gray-200 rounded-xl text-gray-400 hover:text-primary hover:border-primary transition-colors disabled:opacity-40 self-end"
+              title="上传产品图片"
+            >
+              <Paperclip size={18} />
+            </button>
+          )}
+          <input
+            ref={imageInputRef}
+            type="file"
+            className="hidden"
+            accept="image/*"
+            multiple
+            onChange={handleImagesSelected}
+          />
           <textarea
             className="flex-1 px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none bg-white"
             rows={2}
@@ -461,7 +595,7 @@ export default function CopywritingChatPage() {
               phase === 'generated'
                 ? '文案已生成，点击上方"新建会话"开始新的文案'
                 : phase === 'idle'
-                  ? '输入您的产品信息...'
+                  ? '输入您的产品信息...（可先上传产品图片）'
                   : '继续补充信息...'
             }
             value={input}
@@ -478,7 +612,7 @@ export default function CopywritingChatPage() {
           </button>
         </div>
         {phase !== 'generated' && (
-          <p className="text-xs text-gray-400 mt-1.5 text-center">按 Enter 发送，Shift+Enter 换行</p>
+          <p className="text-xs text-gray-400 mt-1.5 text-center">按 Enter 发送，Shift+Enter 换行 | 支持上传产品图片让文案更精准</p>
         )}
       </div>
 

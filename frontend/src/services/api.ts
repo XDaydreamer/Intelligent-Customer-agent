@@ -244,6 +244,12 @@ export interface UploadRuleResponse {
   rule: ComplianceRule | null;
 }
 
+export interface ImageOut {
+  image_id: string;
+  filename: string;
+  preview_url: string;
+}
+
 export const copywritingWorkflowApi = {
   start: (data: { title?: string; initial_message: string }) =>
     request<SessionStartResponse>('/copywriting/workflow/start', {
@@ -266,6 +272,24 @@ export const copywritingWorkflowApi = {
       `/copywriting/workflow/${sessionId}/save-to-kb`,
       { method: 'POST', body: JSON.stringify({ knowledge_base_id: knowledgeBaseId, filename }) },
     ),
+  // Images
+  uploadImages: (sessionId: string, files: File[]) => {
+    const form = new FormData();
+    files.forEach((f) => form.append('files', f));
+    return fetch(`/api/copywriting/workflow/${sessionId}/images`, {
+      method: 'POST',
+      body: form,
+    }).then((res) => {
+      if (!res.ok) return res.json().then((err) => { throw new Error(err.detail || 'Upload failed'); });
+      return res.json() as Promise<ImageOut[]>;
+    });
+  },
+  listImages: (sessionId: string) =>
+    request<{ images: ImageOut[] }>(`/copywriting/workflow/${sessionId}/images`),
+  deleteImage: (sessionId: string, imageId: string) =>
+    request<void>(`/copywriting/workflow/${sessionId}/images/${imageId}`, { method: 'DELETE' }),
+  getImageUrl: (sessionId: string, imageId: string) =>
+    `/api/copywriting/workflow/${sessionId}/images/${imageId}`,
 };
 
 export const complianceRuleApi = {

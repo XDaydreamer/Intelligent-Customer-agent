@@ -1,17 +1,21 @@
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from langchain_core.messages import HumanMessage
 
+from src.config import get_settings
 from src.database.postgres import get_db
 from src.services.copywriting_service import CopywritingService
 from src.services.knowledge_service import KnowledgeService
 from src.agents.copywriting_workflow_agent import get_copywriting_workflow_agent, CopywritingWorkflowState
 from src.utils.file_parser import FileParser
+
+settings = get_settings()
 from src.schemas.copywriting_workflow import (
     StartSessionRequest, SendMessageRequest,
     SessionListItem, SessionDetail, SessionStartResponse, SessionSendResponse,
-    ExportResponse, SaveToKbRequest,
+    ExportResponse, SaveToKbRequest, ImageOut, SessionImagesResponse,
     ComplianceRuleCreate, ComplianceRuleUpdate, ComplianceRuleOut, UploadRuleResponse,
 )
 
@@ -36,7 +40,7 @@ async def start_session(body: StartSessionRequest, db: AsyncSession = Depends(ge
         "product_price": "", "promotion_info": "", "target_audience": "",
         "stock_status": "", "info_complete": False, "analysis_result": "",
         "generated_copy": "", "compliance_rules": rules_text,
-        "next_action": "", "manager_question": "",
+        "next_action": "", "manager_question": "", "image_paths": [],
     }
 
     result = await agent.run(initial_state)
@@ -78,6 +82,7 @@ async def send_message(session_id: str, body: SendMessageRequest, db: AsyncSessi
 
     state["messages"] = list(state.get("messages", [])) + [HumanMessage(content=body.message)]
     state["compliance_rules"] = await svc.get_all_rules_text()
+    state["image_paths"] = state.get("image_paths", [])
 
     result = await agent.run(state)
     await svc.save_state(session_id, result)
@@ -172,6 +177,91 @@ async def save_to_kb(session_id: str, body: SaveToKbRequest, db: AsyncSession = 
         filename=body.filename,
     )
     return {"id": doc.id, "filename": doc.filename}
+
+
+# ── Image endpoints ──
+
+@router.post("/{session_id}/images", response_model=list[ImageOut])
+async def upload_images(session_id: str, files: list[UploadFile] = File(...), db: AsyncSession = Depends(get_db)):
+    """Upload product images to a copywriting session."""
+    svc = CopywritingService(db)
+    session = await svc.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="文案会话不存在")
+    if session.status == "completed":
+        raise HTTPException(status_code=400, detail="该会话已完成")
+
+    result = []
+    for file in files:
+        if not file.filename:
+            continue
+        ext = (file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "")
+        if ext not in ("jpg", "jpeg", "png", "gif", "webp", "bmp"):
+            continue
+        file_bytes = await file.read()
+        image_id, preview_url = await svc.add_image(session_id, file.filename, file_bytes)
+        result.append(ImageOut(image_id=image_id, filename=file.filename, preview_url=preview_url))
+
+        # Add image path to session state
+        state = await svc.restore_state(session_id)
+        if state:
+            img_dir = Path(settings.upload_dir) / "copywriting_images" / session_id
+            state["image_paths"] = state.get("image_paths", [])
+            state["image_paths"].append(str(img_dir / image_id))
+            await svc.save_state(session_id, state)
+
+    return result
+
+
+@router.get("/{session_id}/images", response_model=SessionImagesResponse)
+async def list_images(session_id: str, db: AsyncSession = Depends(get_db)):
+    """List all images uploaded to this session."""
+    svc = CopywritingService(db)
+    session = await svc.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="文案会话不存在")
+    images = await svc.list_images(session_id)
+    return SessionImagesResponse(images=[ImageOut(**img) for img in images])
+
+
+@router.get("/{session_id}/images/{image_id}")
+async def get_image(session_id: str, image_id: str, db: AsyncSession = Depends(get_db)):
+    """Serve an uploaded image for preview."""
+    svc = CopywritingService(db)
+    image_bytes = await svc.get_image_bytes(session_id, image_id)
+    if image_bytes is None:
+        raise HTTPException(status_code=404, detail="图片不存在")
+
+    import tempfile
+    ext = image_id.rsplit(".", 1)[-1].lower() if "." in image_id else "jpg"
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}")
+    tmp.write(image_bytes)
+    tmp.close()
+
+    import mimetypes
+    media_type, _ = mimetypes.guess_type(f"image.{ext}")
+    return FileResponse(tmp.name, media_type=media_type or "image/jpeg")
+
+
+@router.delete("/{session_id}/images/{image_id}", status_code=204)
+async def delete_image(session_id: str, image_id: str, db: AsyncSession = Depends(get_db)):
+    """Delete an uploaded image from the session."""
+    svc = CopywritingService(db)
+    session = await svc.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="文案会话不存在")
+
+    deleted = await svc.delete_image(session_id, image_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="图片不存在")
+
+    # Remove from state image_paths
+    state = await svc.restore_state(session_id)
+    if state:
+        img_dir = Path(settings.upload_dir) / "copywriting_images" / session_id
+        to_remove = str(img_dir / image_id)
+        state["image_paths"] = [p for p in state.get("image_paths", []) if p != to_remove]
+        await svc.save_state(session_id, state)
 
 
 # ── Compliance Rules endpoints ──
