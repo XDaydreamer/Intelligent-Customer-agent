@@ -29,3 +29,23 @@ def get_embeddings() -> OpenAIEmbeddings:
         api_key=settings.dashscope_api_key,
         base_url=settings.dashscope_base_url,
     )
+
+
+def get_embedding_function():
+    """Return a DashScope embedding function for ChromaDB.
+
+    This is the CORRECT way to embed documents for ChromaDB — the old
+    get_embeddings() returns an OpenAIEmbeddings that was never wired in.
+    """
+    from src.agents.embedding import DashScopeEmbeddingFunction
+    return DashScopeEmbeddingFunction(
+        api_key=settings.dashscope_api_key,
+        base_url=settings.dashscope_base_url,
+        model=settings.embedding_model,
+    )
+
+
+def get_reranker_client():
+    """Return an async reranker client for qwen3-rerank."""
+    from src.agents.reranker import DashScopeReranker
+    return DashScopeReranker(api_key=settings.dashscope_api_key)

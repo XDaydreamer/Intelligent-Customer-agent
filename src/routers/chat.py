@@ -66,13 +66,18 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
 
     # Use LangGraph agent with history
     agent = get_chat_agent()
-    reply = await agent.chat(
+    result = await agent.chat(
         message=request.message,
         knowledge_base_id=request.knowledge_base_id,
         template_content=template.content,
         conversation_id=conv_id,
         history=history,
     )
+
+    reply = result["reply"]
+    sources = result.get("sources", [])
+    source_details = result.get("source_details", [])
+    retrieval_count = result.get("retrieval_count", 0)
 
     # Save both messages
     await mem_svc.add_message(conv_id, "user", request.message)
@@ -81,5 +86,11 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
     # Compress if needed
     await mem_svc.maybe_compress(conv_id)
 
-    return ChatResponse(reply=reply, conversation_id=conv_id)
+    return ChatResponse(
+        reply=reply,
+        sources=sources,
+        source_details=source_details,
+        conversation_id=conv_id,
+        retrieval_count=retrieval_count,
+    )
 

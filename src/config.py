@@ -39,6 +39,30 @@ class Settings(BaseSettings):
     upload_dir: str = "./uploads"
     max_upload_size_mb: int = 200
 
+    # ── RAG settings ────────────────────────────────
+    # Chunking
+    chunk_size: int = 500
+    chunk_overlap: int = 50
+    chunk_separators: list[str] = ["\n\n", "\n", "。", "？", "！", "，", "；", "：", " ", ""]
+
+    # Retrieval
+    retrieval_top_k: int = 15          # candidates before rerank
+    retrieval_final_k: int = 10        # candidates after RRF fusion → passed to reranker
+    rrf_k: int = 60                    # RRF smoothing constant
+    rrf_alpha: float = 0.7             # vector weight in RRF (BM25 = 1 - alpha)
+    bm25_cache_ttl: int = 300          # seconds before BM25 index rebuild
+
+    # Re-ranking (qwen3-rerank via DashScope compatible API)
+    rerank_model: str = "qwen3-rerank"
+    rerank_top_n: int = 5              # final docs after rerank
+    rerank_instruct: str = "Given a web search query, retrieve relevant passages that answer the query."
+
+    # Query rewriting
+    query_rewrite_enabled: bool = True
+
+    # ChromaDB embedding
+    chroma_distance_metric: str = "cosine"
+
     @property
     def postgres_url(self) -> str:
         return (
