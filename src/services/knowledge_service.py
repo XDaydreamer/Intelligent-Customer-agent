@@ -11,8 +11,26 @@ from src.schemas.knowledge_base import KnowledgeBaseCreate, KnowledgeBaseUpdate
 from src.database.chroma import get_or_create_collection
 from src.utils.file_parser import FileParser
 from src.config import get_settings
+from src.agents.embedding import DashScopeEmbeddingFunction
 
 settings = get_settings()
+
+
+def _get_embedding_function() -> DashScopeEmbeddingFunction:
+    return DashScopeEmbeddingFunction(
+        api_key=settings.dashscope_api_key,
+        base_url=settings.dashscope_base_url,
+        model=settings.embedding_model,
+    )
+
+
+def _invalidate_bm25_cache(kb_id: str):
+    """Invalidate BM25 cache for the given knowledge base after document changes."""
+    try:
+        from src.agents.retrieval import get_hybrid_retriever
+        get_hybrid_retriever().invalidate_cache(f"kb_{kb_id}")
+    except ImportError:
+        pass
 
 
 class KnowledgeService:
@@ -80,6 +98,9 @@ class KnowledgeService:
             client.delete_collection(f"kb_{kb_id}")
         except (ValueError, chromadb.errors.InvalidCollectionException):
             pass
+        # Invalidate BM25 cache
+        _invalidate_bm25_cache(kb_id)
+
         await self.db.delete(kb)
         await self.db.flush()
         return True
@@ -101,14 +122,18 @@ class KnowledgeService:
         text = FileParser.parse_bytes(content, filename)
         chunks = self._chunk_text(text)
 
-        # Store embeddings in ChromaDB
-        collection = get_or_create_collection(f"kb_{kb_id}")
+        # Store embeddings in ChromaDB with DashScope embedding function
+        ef = _get_embedding_function()
+        collection = get_or_create_collection(f"kb_{kb_id}", embedding_function=ef)
         chunk_ids = [f"{file_id}_chunk_{i}" for i in range(len(chunks))]
         collection.add(
             ids=chunk_ids,
             documents=chunks,
             metadatas=[{"source": filename, "kb_id": kb_id}] * len(chunks),
         )
+
+        # Invalidate BM25 cache so next retrieval picks up new docs
+        _invalidate_bm25_cache(kb_id)
 
         # Record in PostgreSQL
         doc = KnowledgeDocument(
@@ -122,18 +147,23 @@ class KnowledgeService:
         await self.db.flush()
         return doc
 
-    def _chunk_text(self, text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
-        """Split text into overlapping chunks."""
+    def _chunk_text(self, text: str) -> list[str]:
+        """Split text into semantically meaningful chunks using RecursiveCharacterTextSplitter.
+
+        Uses Chinese-aware separators for better boundary detection:
+        double newline → single newline → Chinese punctuation → space → char.
+        """
         if not text.strip():
             return []
-        chunks = []
-        start = 0
-        while start < len(text):
-            end = start + chunk_size
-            chunk = text[start:end]
-            chunks.append(chunk)
-            start = end - overlap
-        return chunks
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+        splitter = RecursiveCharacterTextSplitter(
+            separators=list(settings.chunk_separators),
+            chunk_size=settings.chunk_size,
+            chunk_overlap=settings.chunk_overlap,
+            length_function=len,
+            is_separator_regex=False,
+        )
+        return splitter.split_text(text)
 
     async def add_text_to_kb(self, kb_id: str, text: str, filename: str) -> KnowledgeDocument:
         kb = await self.get(kb_id)
@@ -143,13 +173,17 @@ class KnowledgeService:
         file_id = str(uuid.uuid4())
         chunks = self._chunk_text(text)
 
-        collection = get_or_create_collection(f"kb_{kb_id}")
+        ef = _get_embedding_function()
+        collection = get_or_create_collection(f"kb_{kb_id}", embedding_function=ef)
         chunk_ids = [f"{file_id}_chunk_{i}" for i in range(len(chunks))]
         collection.add(
             ids=chunk_ids,
             documents=chunks,
             metadatas=[{"source": filename, "kb_id": kb_id}] * len(chunks),
         )
+
+        # Invalidate BM25 cache
+        _invalidate_bm25_cache(kb_id)
 
         doc = KnowledgeDocument(
             id=file_id,

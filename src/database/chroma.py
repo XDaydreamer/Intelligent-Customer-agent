@@ -1,5 +1,6 @@
 import chromadb
 from chromadb.config import Settings as ChromaSettings
+from chromadb.api.types import EmbeddingFunction
 from src.config import get_settings
 
 settings = get_settings()
@@ -17,6 +18,13 @@ def get_chroma_client():
     return _chroma_client
 
 
-def get_or_create_collection(name: str):
+def get_or_create_collection(name: str, embedding_function: EmbeddingFunction | None = None):
     client = get_chroma_client()
-    return client.get_or_create_collection(name=name)
+    metadata = None
+    if embedding_function is not None:
+        metadata = {"hnsw:space": settings.chroma_distance_metric}
+    return client.get_or_create_collection(
+        name=name,
+        embedding_function=embedding_function,
+        metadata=metadata,
+    )
